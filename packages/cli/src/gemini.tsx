@@ -99,7 +99,16 @@ export async function main() {
   }
 
   const extensions = loadExtensions(workspaceRoot);
-  const config = await loadCliConfig(settings.merged, extensions, sessionId);
+  const { config, cliAuthType } = await loadCliConfig(settings.merged, extensions, sessionId);
+
+  // Override selectedAuthType with CLI arg if provided
+  if (cliAuthType) {
+    settings.setValue(
+      SettingScope.User,
+      'selectedAuthType',
+      cliAuthType as AuthType,
+    );
+  }
 
   // set default fallback to gemini api key
   // this has to go after load cli because thats where the env is set
@@ -257,11 +266,22 @@ async function loadNonInteractiveConfig(
       ...settings.merged,
       excludeTools: newExcludeTools,
     };
-    finalConfig = await loadCliConfig(
+    const { config: nonInteractiveConfig, cliAuthType: nonInteractiveCLIAuthType } = await loadCliConfig(
       nonInteractiveSettings,
       extensions,
       config.getSessionId(),
     );
+    
+    // Apply CLI auth type override for non-interactive mode too
+    if (nonInteractiveCLIAuthType) {
+      settings.setValue(
+        SettingScope.User,
+        'selectedAuthType',
+        nonInteractiveCLIAuthType as AuthType,
+      );
+    }
+    
+    finalConfig = nonInteractiveConfig;
   }
 
   return await validateNonInterActiveAuth(

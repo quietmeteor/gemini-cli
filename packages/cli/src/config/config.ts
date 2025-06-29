@@ -53,6 +53,9 @@ interface CliArgs {
   telemetryTarget: string | undefined;
   telemetryOtlpEndpoint: string | undefined;
   telemetryLogPrompts: boolean | undefined;
+  'local-model-endpoint': string | undefined;
+  'local-model-provider': string | undefined;
+  'auth-type': string | undefined;
 }
 
 async function parseArguments(): Promise<CliArgs> {
@@ -128,6 +131,20 @@ async function parseArguments(): Promise<CliArgs> {
       description: 'Enables checkpointing of file edits',
       default: false,
     })
+    .option('local-model-endpoint', {
+      type: 'string',
+      description: 'Local model endpoint URL (e.g., http://localhost:11434 for Ollama)',
+    })
+    .option('local-model-provider', {
+      type: 'string',
+      choices: ['ollama', 'vllm', 'custom'],
+      description: 'Local model provider type',
+    })
+    .option('auth-type', {
+      type: 'string',
+      choices: ['oauth-personal', 'gemini-api-key', 'vertex-ai', 'local-model'],
+      description: 'Authentication method to use',
+    })
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
     .alias('v', 'version')
     .help()
@@ -165,11 +182,19 @@ export async function loadCliConfig(
   settings: Settings,
   extensions: Extension[],
   sessionId: string,
-): Promise<Config> {
+): Promise<{ config: Config; cliAuthType?: string }> {
   loadEnvironment();
 
   const argv = await parseArguments();
   const debugMode = argv.debug || false;
+
+  // Set environment variables from CLI args for local model support
+  if (argv['local-model-endpoint']) {
+    process.env.LOCAL_MODEL_ENDPOINT = argv['local-model-endpoint'];
+  }
+  if (argv['local-model-provider']) {
+    process.env.LOCAL_MODEL_PROVIDER = argv['local-model-provider'];
+  }
 
   // Set the context filename in the server's memoryTool module BEFORE loading memory
   // TODO(b/343434939): This is a bit of a hack. The contextFileName should ideally be passed
@@ -197,7 +222,7 @@ export async function loadCliConfig(
 
   const sandboxConfig = await loadSandboxConfig(settings, argv);
 
-  return new Config({
+  const createServerConfig = new Config({
     sessionId,
     embeddingModel: DEFAULT_GEMINI_EMBEDDING_MODEL,
     sandbox: sandboxConfig,
@@ -246,6 +271,11 @@ export async function loadCliConfig(
     model: argv.model!,
     extensionContextFilePaths,
   });
+
+  return {
+    config: createServerConfig,
+    cliAuthType: argv['auth-type'],
+  };
 }
 
 function mergeMcpServers(settings: Settings, extensions: Extension[]) {

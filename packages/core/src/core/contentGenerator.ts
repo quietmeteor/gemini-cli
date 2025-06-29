@@ -16,6 +16,7 @@ import {
 import { createCodeAssistContentGenerator } from '../code_assist/codeAssist.js';
 import { DEFAULT_GEMINI_MODEL } from '../config/models.js';
 import { getEffectiveModel } from './modelCheck.js';
+import { LocalContentGenerator, LocalModelConfig } from './localContentGenerator.js';
 
 /**
  * Interface abstracting the core functionalities for generating content and counting tokens.
@@ -38,6 +39,7 @@ export enum AuthType {
   LOGIN_WITH_GOOGLE_PERSONAL = 'oauth-personal',
   USE_GEMINI = 'gemini-api-key',
   USE_VERTEX_AI = 'vertex-ai',
+  USE_LOCAL_MODEL = 'local-model',
 }
 
 export type ContentGeneratorConfig = {
@@ -45,6 +47,7 @@ export type ContentGeneratorConfig = {
   apiKey?: string;
   vertexai?: boolean;
   authType?: AuthType | undefined;
+  localModel?: LocalModelConfig;
 };
 
 export async function createContentGeneratorConfig(
@@ -56,6 +59,8 @@ export async function createContentGeneratorConfig(
   const googleApiKey = process.env.GOOGLE_API_KEY;
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT;
   const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION;
+  const localModelEndpoint = process.env.LOCAL_MODEL_ENDPOINT;
+  const localModelProvider = process.env.LOCAL_MODEL_PROVIDER;
 
   // Use runtime model from config if available, otherwise fallback to parameter or default
   const effectiveModel = config?.getModel?.() || model || DEFAULT_GEMINI_MODEL;
@@ -96,6 +101,15 @@ export async function createContentGeneratorConfig(
     return contentGeneratorConfig;
   }
 
+  if (authType === AuthType.USE_LOCAL_MODEL && localModelEndpoint) {
+    contentGeneratorConfig.localModel = {
+      endpoint: localModelEndpoint,
+      model: effectiveModel,
+      provider: (localModelProvider as 'ollama' | 'vllm' | 'custom') || 'ollama',
+    };
+    return contentGeneratorConfig;
+  }
+
   return contentGeneratorConfig;
 }
 
@@ -123,6 +137,10 @@ export async function createContentGenerator(
     });
 
     return googleGenAI.models;
+  }
+
+  if (config.authType === AuthType.USE_LOCAL_MODEL && config.localModel) {
+    return new LocalContentGenerator(config.localModel);
   }
 
   throw new Error(

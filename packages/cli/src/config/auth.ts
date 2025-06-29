@@ -35,5 +35,12 @@ export const validateAuthMethod = (authMethod: string): string | null => {
     return null;
   }
 
+  if (authMethod === AuthType.USE_LOCAL_MODEL) {
+    if (!process.env.LOCAL_MODEL_ENDPOINT) {
+      return 'LOCAL_MODEL_ENDPOINT environment variable not found when using local-model auth type. Use --local-model-endpoint or set the environment variable.';
+    }
+    return null;
+  }
+
   return 'Invalid auth method selected.';
 };
